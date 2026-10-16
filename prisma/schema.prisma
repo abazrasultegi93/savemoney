@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum QuestionKind {
+  HOMEWORK // checked right after the lesson
+  TEST     // must be passed before the next lesson opens
+}
+
+enum QuestionType {
+  CHOICE
+  NUMBER
+}
+
+enum TxType {
+  INCOME
+  EXPENSE
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  name         String
+  passwordHash String
+  role         Role             @default(STUDENT)
+  locale       String           @default("en")
+  createdAt    DateTime         @default(now())
+  enrollments  Enrollment[]
+  progress     LessonProgress[]
+  attempts     Attempt[]
+  transactions Transaction[]
+}
+
+model Course {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  titleEn       String
+  titleRu       String
+  descriptionEn String       @default("")
+  descriptionRu String       @default("")
+  priceCents    Int          @default(0) // USD; 0 = free
+  published     Boolean      @default(false)
+  order         Int          @default(0)
+  createdAt     DateTime     @default(now())
+  lessons       Lesson[]
+  enrollments   Enrollment[]
+}
+
+model Lesson {
+  id        String           @id @default(cuid())
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order     Int
+  titleEn   String
+  titleRu   String
+  contentEn String           @default("")
+  contentRu String           @default("")
+  youtubeId String           @default("")
+  isPreview Boolean          @default(false) // open without purchase
+  passScore Int              @default(70) // percent needed for homework and test
+  questions Question[]
+  progress  LessonProgress[]
+  attempts  Attempt[]
+
+  @@index([courseId, order])
+}
+
+model Question {
+  id            String       @id @default(cuid())
+  lessonId      String
+  lesson        Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  kind          QuestionKind
+  type          QuestionType @default(CHOICE)
+  order         Int          @default(0)
+  promptEn      String
+  promptRu      String
+  optionsEn     String[]
+  optionsRu     String[]
+  correctIndex  Int?
+  correctNumber Float?
+  tolerance     Float        @default(0.01)
+}
+
+model Enrollment {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId        String
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  source          String   @default("stripe") // stripe | admin | free | dev
+  stripeSessionId String?  @unique
+  amountCents     Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model LessonProgress {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId         String
+  lesson           Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  videoWatchedAt   DateTime?
+  homeworkPassedAt DateTime?
+  homeworkScore    Int?
+  testPassedAt     DateTime?
+  testScore        Int?
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+model Attempt {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  kind      QuestionKind
+  score     Int
+  passed    Boolean
+  answers   Json
+  createdAt DateTime     @default(now())
+
+  @@index([userId, lessonId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        TxType
+  amountCents Int
+  category    String
+  note        String   @default("")
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([userId, date])
+}
